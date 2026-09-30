@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Сапёр</title>
+<style>
+  :root{
+    --face:#c0c0c0;
+    --light:#ffffff;
+    --dark:#808080;
+    --darker:#3a3a3a;
+  }
+  html,body{height:100%}
+  body{
+    margin:0;
+    background:#008080;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-family:"Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  .panel{
+    background:var(--face);
+    padding:6px;
+    border:3px solid;
+    border-color:var(--light) var(--darker) var(--darker) var(--light);
+  }
+  .header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    background:var(--face);
+    border:3px solid;
+    border-color:var(--dark) var(--light) var(--light) var(--dark);
+    padding:6px 8px;
+    margin-bottom:6px;
+  }
+  .counter{
+    background:#000;
+    color:#ff0000;
+    font-family:"Courier New", monospace;
+    font-weight:bold;
+    font-size:22px;
+    letter-spacing:2px;
+    padding:2px 6px;
+    border:2px solid;
+    border-color:var(--darker) var(--light) var(--light) var(--darker);
+    min-width:54px;
+    text-align:center;
+  }
+  .smiley{
+    width:32px;height:32px;
+    font-size:18px;
+    background:var(--face);
+    border:2px solid;
+    border-color:var(--light) var(--dark) var(--dark) var(--light);
+    cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .smiley:active{
+    border-color:var(--dark) var(--light) var(--light) var(--dark);
+  }
+  .board{
+    display:grid;
+    grid-template-columns:repeat(16,28px);
+    grid-template-rows:repeat(16,28px);
+    width:448px;
+    height:448px;
+    border:3px solid;
+    border-color:var(--dark) var(--light) var(--light) var(--dark);
+    position:relative;
+    box-sizing:content-box;
+    overflow:hidden;
+  }
+  .cell{
+    width:28px;height:28px;
+    display:flex;align-items:center;justify-content:center;
+    font-weight:bold;
+    font-size:15px;
+    background:var(--face);
+    border:2px solid;
+    border-color:var(--light) var(--dark) var(--dark) var(--light);
+    cursor:pointer;
+    user-select:none;
+    box-sizing:border-box;
+  }
+  .cell.open{
+    border:1px solid var(--dark);
+    background:var(--face);
+    cursor:default;
+  }
+  .cell.mine{ background:#ff0000; }
+  .c1{color:#0000ff}
+  .c2{color:#008000}
+  .c3{color:#ff0000}
+  .c4{color:#000080}
+  .c5{color:#800000}
+  .c6{color:#008080}
+  .c7{color:#000000}
+  .c8{color:#808080}
+
+  .offer{
+    position:absolute;
+    top:0;left:0;
+    width:448px;
+    height:448px;
+    background:var(--face);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    padding:16px;
+    box-sizing:border-box;
+    overflow:auto;
+  }
+  .offer h2{
+    margin:0 0 10px 0;
+    font-size:20px;
+    color:#008000;
+  }
+  .offer p{
+    margin:4px 0;
+    font-size:13px;
+    color:var(--darker);
+    max-width:380px;
+  }
+  .offer button{
+    margin-top:14px;
+    padding:8px 18px;
+    background:var(--face);
+    border:3px solid;
+    border-color:var(--light) var(--dark) var(--dark) var(--light);
+    font-weight:bold;
+    cursor:pointer;
+  }
+  .offer button:active{
+    border-color:var(--dark) var(--light) var(--light) var(--dark);
+  }
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <div class="header">
+    <div class="counter" id="mineCount">040</div>
+    <div class="smiley" id="smiley">🙂</div>
+    <div class="counter" id="timer">000</div>
+  </div>
+  <div class="board" id="board"></div>
+</div>
+
+<script>
+const SIZE = 16;
+const MINES = 30;
+let grid = [];
+let opened = 0;
+let flags = 0;
+let gameOver = false;
+let timerInterval = null;
+let seconds = 0;
+
+const boardEl = document.getElementById('board');
+const mineCountEl = document.getElementById('mineCount');
+const timerEl = document.getElementById('timer');
+const smileyEl = document.getElementById('smiley');
+
+function pad3(n){ return String(Math.min(n,999)).padStart(3,'0'); }
+
+function init(){
+  clearInterval(timerInterval);
+  seconds = 0;
+  timerEl.textContent = '000';
+  gameOver = false;
+  opened = 0;
+  flags = 0;
+  smileyEl.textContent = '🙂';
+  mineCountEl.textContent = pad3(MINES);
+  boardEl.innerHTML = '';
+
+  grid = Array.from({length: SIZE}, () => Array.from({length: SIZE}, () => ({
+    mine:false, count:0, open:false, flag:false, el:null
+  })));
+
+  // расставляем мины сразу
+  let placed = 0;
+  while(placed < MINES){
+    const r = Math.floor(Math.random()*SIZE);
+    const c = Math.floor(Math.random()*SIZE);
+    if(!grid[r][c].mine){
+      grid[r][c].mine = true;
+      placed++;
+    }
+  }
+
+  // считаем числа
+  for(let r=0;r<SIZE;r++){
+    for(let c=0;c<SIZE;c++){
+      if(grid[r][c].mine) continue;
+      let cnt = 0;
+      for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){
+        const nr=r+dr, nc=c+dc;
+        if(nr>=0&&nr<SIZE&&nc>=0&&nc<SIZE&&grid[nr][nc].mine) cnt++;
+      }
+      grid[r][c].count = cnt;
+    }
+  }
+
+  for(let r=0;r<SIZE;r++){
+    for(let c=0;c<SIZE;c++){
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.addEventListener('click', () => onOpen(r,c));
+      cell.addEventListener('contextmenu', (e) => { e.preventDefault(); onFlag(r,c); });
+      boardEl.appendChild(cell);
+      grid[r][c].el = cell;
+    }
+  }
+}
+
+function startTimerIfNeeded(){
+  if(timerInterval) return;
+  timerInterval = setInterval(() => {
+    seconds++;
+    timerEl.textContent = pad3(seconds);
+  }, 1000);
+}
+
+function onFlag(r,c){
+  if(gameOver) return;
+  const cell = grid[r][c];
+  if(cell.open) return;
+  cell.flag = !cell.flag;
+  flags += cell.flag ? 1 : -1;
+  cell.el.textContent = cell.flag ? '🚩' : '';
+  mineCountEl.textContent = pad3(MINES - flags);
+}
+
+function onOpen(r,c){
+  if(gameOver) return;
+  const cell = grid[r][c];
+  if(cell.open || cell.flag) return;
+  startTimerIfNeeded();
+
+  if(cell.mine){
+    revealAllMines(r,c);
+    endGame(false);
+    return;
+  }
+  floodOpen(r,c);
+  checkWin();
+}
+
+function floodOpen(r,c){
+  const cell = grid[r][c];
+  if(cell.open || cell.flag || cell.mine) return;
+  cell.open = true;
+  opened++;
+  cell.el.classList.add('open');
+  if(cell.count > 0){
+    cell.el.textContent = cell.count;
+    cell.el.classList.add('c'+cell.count);
+  } else {
+    cell.el.textContent = '';
+    for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){
+      const nr=r+dr, nc=c+dc;
+      if(nr>=0&&nr<SIZE&&nc>=0&&nc<SIZE) floodOpen(nr,nc);
+    }
+  }
+}
+
+function revealAllMines(hr,hc){
+  for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++){
+    const cell = grid[r][c];
+    if(cell.mine){
+      cell.el.classList.add('open','mine');
+      cell.el.textContent = '💣';
+    }
+  }
+}
+
+function checkWin(){
+  if(opened === SIZE*SIZE - MINES){
+    endGame(true);
+  }
+}
+
+function endGame(win){
+  gameOver = true;
+  clearInterval(timerInterval);
+  smileyEl.textContent = win ? '😎' : '💀';
+  if(win) showOffer();
+}
+
+function showOffer(){
+  const div = document.createElement('div');
+  div.className = 'offer';
+  div.innerHTML = `
+    <h2>Поле чисто. Оффер найден 🎉</h2>
+    <p>Резюме отправлено. Спасибо, что дошли до конца, не подорвавшись.</p>
+    <p>Дальше — как договоримся: ссылка на резюме, контакты, форма отклика.</p>
+    <button id="replay">Сыграть ещё раз</button>
+  `;
+  boardEl.appendChild(div);
+  document.getElementById('replay').addEventListener('click', init);
+}
+
+smileyEl.addEventListener('click', init);
+init();
+</script>
+</body>
+</html>
